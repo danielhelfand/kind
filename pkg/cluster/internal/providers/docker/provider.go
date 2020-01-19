@@ -19,6 +19,7 @@ package docker
 import (
 	"fmt"
 	"net"
+	osexec "os/exec"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -73,6 +74,9 @@ func (p *Provider) Provision(status *cli.Status, cluster string, cfg *config.Clu
 
 // ListClusters is part of the providers.Provider interface
 func (p *Provider) ListClusters() ([]string, error) {
+	if err := isDockerAvailable(); err != nil {
+		return nil, errors.Wrap(err, "failed to list clusters")
+	}
 	cmd := exec.Command("docker",
 		"ps",
 		"-q",         // quiet output for parsing
@@ -92,6 +96,9 @@ func (p *Provider) ListClusters() ([]string, error) {
 
 // ListNodes is part of the providers.Provider interface
 func (p *Provider) ListNodes(cluster string) ([]nodes.Node, error) {
+	if err := isDockerAvailable(); err != nil {
+		return nil, errors.Wrap(err, "failed to list clusters")
+	}
 	cmd := exec.Command("docker",
 		"ps",
 		"-q",         // quiet output for parsing
@@ -104,8 +111,7 @@ func (p *Provider) ListNodes(cluster string) ([]nodes.Node, error) {
 	)
 	lines, err := exec.OutputLines(cmd)
 	if err != nil {
-		return nil, errors.Wrap(err, "Cannot connect to the Docker daemon. Is the docker daemon running?")
-		//return nil, errors.Wrap(err, "failed to list clusters")
+		return nil, errors.Wrap(err, "failed to list clusters")
 	}
 	// convert names to node handles
 	ret := make([]nodes.Node, 0, len(lines))
@@ -117,6 +123,9 @@ func (p *Provider) ListNodes(cluster string) ([]nodes.Node, error) {
 
 // DeleteNodes is part of the providers.Provider interface
 func (p *Provider) DeleteNodes(n []nodes.Node) error {
+	if err := isDockerAvailable(); err != nil {
+		return errors.Wrap(err, "failed to delete nodes")
+	}
 	if len(n) == 0 {
 		return nil
 	}
@@ -138,6 +147,9 @@ func (p *Provider) DeleteNodes(n []nodes.Node) error {
 
 // GetAPIServerEndpoint is part of the providers.Provider interface
 func (p *Provider) GetAPIServerEndpoint(cluster string) (string, error) {
+	if err := isDockerAvailable(); err != nil {
+		return "", errors.Wrap(err, "failed to list clusters")
+	}
 	// locate the node that hosts this
 	allNodes, err := p.ListNodes(cluster)
 	if err != nil {
@@ -177,4 +189,12 @@ func (p *Provider) node(name string) nodes.Node {
 	return &node{
 		name: name,
 	}
+}
+
+// check if docker is installed
+func isDockerAvailable() error {
+	if _, err := osexec.LookPath("docker"); err != nil {
+		return errors.New("docker CLI is not available on PATH. Please install the docker CLI.")
+	}
+	return nil
 }
